@@ -1,0 +1,183 @@
+import streamlit as st
+import pandas as pd
+
+# 웹사이트 전체 화면 넓게 쓰기 설정
+st.set_page_config(page_title="학교 아침축구 리그", page_icon="⚽", layout="wide")
+
+st.title("⚽ 오륜중학교 아침축구리그")
+
+# --- 1. 데이터 저장소 만들기 (Session State) ---
+if 'teams' not in st.session_state:
+    st.session_state.teams = pd.DataFrame({
+        '팀명': ['A팀', 'B팀', 'C팀'],
+        '승': [0, 0, 0],
+        '무': [0, 0, 0],
+        '패': [0, 0, 0],
+        '득점': [0, 0, 0],
+        '실점': [0, 0, 0]
+    })
+
+if 'players' not in st.session_state:
+    st.session_state.players = pd.DataFrame(
+        columns=['이름', '소속팀', '포지션', '등번호', '골', '도움', '포인트']
+    )
+
+# --- 2. 탭(메뉴) 만들기 ---
+tab1, tab2, tab3 = st.tabs(["📊 팀 순위표", "🏃‍♂️ 개인 랭킹", "⚙️ 관리자 설정 (기록 입력)"])
+
+# --- TAB 1: 팀 순위표 ---
+with tab1:
+    st.header("🏆 현재 팀 순위")
+    
+    df_teams = st.session_state.teams.copy()
+    df_teams['승점'] = (df_teams['승'] * 3) + (df_teams['무'] * 1)
+    df_teams['득실차'] = df_teams['득점'] - df_teams['실점']
+    
+    df_teams = df_teams.sort_values(
+        by=['승점', '득실차', '득점'], 
+        ascending=[False, False, False]
+    ).reset_index(drop=True)
+    
+    df_teams.index = df_teams.index + 1  
+    
+    display_teams = df_teams[['팀명', '승점', '승', '무', '패', '득점', '실점', '득실차']]
+    st.dataframe(display_teams, use_container_width=True)
+
+# --- TAB 2: 개인 랭킹 (득점, 도움, 포인트) ---
+with tab2:
+    st.header("🔥 선수 개인 기록 및 랭킹")
+    
+    if len(st.session_state.players) == 0:
+        st.info("아직 등록된 선수가 없습니다. 관리자 탭에서 선수를 추가해주세요.")
+    else:
+        df_players = st.session_state.players.copy()
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.subheader("⚽ 득점왕 랭킹")
+            top_scorers = df_players.sort_values(by='골', ascending=False)[['이름', '소속팀', '골']].head(5)
+            top_scorers = top_scorers[top_scorers['골'] > 0].reset_index(drop=True)
+            top_scorers.index = top_scorers.index + 1
+            st.dataframe(top_scorers, use_container_width=True)
+            
+        with col2:
+            st.subheader("👟 도움왕 랭킹")
+            top_assists = df_players.sort_values(by='도움', ascending=False)[['이름', '소속팀', '도움']].head(5)
+            top_assists = top_assists[top_assists['도움'] > 0].reset_index(drop=True)
+            top_assists.index = top_assists.index + 1
+            st.dataframe(top_assists, use_container_width=True)
+            
+        with col3:
+            st.subheader("🌟 포인트 랭킹 (골+도움)")
+            top_points = df_players.sort_values(by='포인트', ascending=False)[['이름', '소속팀', '포인트']].head(5)
+            top_points = top_points[top_points['포인트'] > 0].reset_index(drop=True)
+            top_points.index = top_points.index + 1
+            st.dataframe(top_points, use_container_width=True)
+        
+        st.divider()
+        st.subheader("전체 선수 명단")
+        st.dataframe(df_players.sort_values(by='포인트', ascending=False).reset_index(drop=True), use_container_width=True)
+
+# --- TAB 3: 관리자 설정 (비밀번호 잠금 적용) ---
+with tab3:
+    st.header("⚙️ 관리자 설정 및 기록 입력")
+    
+    password_input = st.text_input("관리자 비밀번호를 입력하세요", type="password")
+    
+    if password_input == "OMS26":
+        st.success("🔒 관리자 권한이 확인되었습니다!")
+        st.divider()
+        
+        # [신규 기능] 팀 이름 변경 섹션
+        st.subheader("✏️ 팀 이름 변경하기")
+        target_team = st.selectbox("이름을 바꿀 팀 선택", st.session_state.teams['팀명'].tolist(), key="rename_target")
+        new_team_name = st.text_input("새로운 팀 이름 입력")
+        
+        if st.button("팀 이름 변경 적용"):
+            if new_team_name and new_team_name not in st.session_state.teams['팀명'].tolist():
+                # 1. 팀 목록에서 이름 변경
+                team_idx = st.session_state.teams[st.session_state.teams['팀명'] == target_team].index[0]
+                st.session_state.teams.at[team_idx, '팀명'] = new_team_name
+                
+                # 2. 해당 팀에 속한 선수들의 소속팀 이름도 같이 변경
+                if len(st.session_state.players) > 0:
+                    st.session_state.players.loc[st.session_state.players['소속팀'] == target_team, '소속팀'] = new_team_name
+                
+                st.success(f"팀 이름이 '{target_team}'에서 '{new_team_name}'(으)로 변경되었습니다!")
+                st.rerun()
+            else:
+                st.error("이미 존재하는 팀명이거나 올바른 이름을 입력해주세요.")
+                
+        st.divider()
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.subheader("➕ 신규 선수 등록")
+            with st.form("add_player_form"):
+                new_name = st.text_input("선수 이름")
+                new_team = st.selectbox("소속팀", st.session_state.teams['팀명'].tolist())
+                new_position = st.selectbox("포지션", ["FW (공격수)", "MF (미드필더)", "DF (수비수)", "GK (골키퍼)"])
+                new_number = st.number_input("등번호", min_value=1, max_value=99, step=1)
+                
+                submit_player = st.form_submit_button("선수 등록하기")
+                
+                if submit_player and new_name:
+                    new_data = pd.DataFrame([{
+                        '이름': new_name, '소속팀': new_team, '포지션': new_position, 
+                        '등번호': new_number, '골': 0, '도움': 0, '포인트': 0
+                    }])
+                    st.session_state.players = pd.concat([st.session_state.players, new_data], ignore_index=True)
+                    st.success(f"{new_name} 선수가 등록되었습니다!")
+                    st.rerun()
+
+        with col2:
+            st.subheader("📈 경기 결과 및 스탯 업데이트")
+            
+            # 1. 팀 결과 업데이트
+            st.write("**팀 경기 결과 입력**")
+            update_team = st.selectbox("결과를 입력할 팀 선택", st.session_state.teams['팀명'].tolist(), key="result_team")
+            match_result = st.radio("경기 결과", ["승리", "무승부", "패배"], horizontal=True)
+            scored_goals = st.number_input("해당 경기 득점 수", min_value=0, step=1, key="match_scored")
+            conceded_goals = st.number_input("해당 경기 실점 수", min_value=0, step=1, key="match_conceded")
+            
+            if st.button("팀 결과 적용"):
+                idx = st.session_state.teams[st.session_state.teams['팀명'] == update_team].index[0]
+                
+                if match_result == "승리":
+                    st.session_state.teams.at[idx, '승'] += 1
+                elif match_result == "무승부":
+                    st.session_state.teams.at[idx, '무'] += 1
+                else:
+                    st.session_state.teams.at[idx, '패'] += 1
+                
+                st.session_state.teams.at[idx, '득점'] += scored_goals
+                st.session_state.teams.at[idx, '실점'] += conceded_goals
+                
+                st.success("팀 경기 결과가 업데이트 되었습니다!")
+                st.rerun()
+                
+            st.divider()
+            
+            # 2. 선수 스탯 업데이트
+            st.write("**개인 스탯 추가 (골/도움)**")
+            if len(st.session_state.players) > 0:
+                update_player = st.selectbox("스탯을 추가할 선수 선택", st.session_state.players['이름'].tolist())
+                add_goal = st.number_input("추가할 골 수", min_value=0, step=1, key="player_goal")
+                add_assist = st.number_input("추가할 도움 수", min_value=0, step=1, key="player_assist")
+                
+                if st.button("스탯 적용"):
+                    idx = st.session_state.players[st.session_state.players['이름'] == update_player].index[0]
+                    st.session_state.players.at[idx, '골'] += add_goal
+                    st.session_state.players.at[idx, '도움'] += add_assist
+                    st.session_state.players.at[idx, '포인트'] = st.session_state.players.at[idx, '골'] + st.session_state.players.at[idx, '도움']
+                    st.success("개인 스탯이 업데이트 되었습니다!")
+                    st.rerun()
+            else:
+                st.warning("먼저 선수를 등록해주세요.")
+                
+    elif password_input == "":
+        st.info("관리자 기능을 이용하려면 비밀번호를 입력하세요.")
+    else:
+        st.error("❌ 비밀번호가 틀렸습니다. 올바른 비밀번호를 입력해주세요.")
