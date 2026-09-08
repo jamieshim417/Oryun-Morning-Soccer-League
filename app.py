@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import os
 from datetime import datetime, timedelta
-from collections import Counter # 득점/도움 개수 카운트를 위해 추가
+from collections import Counter
 
 # 웹사이트 전체 화면 넓게 쓰기 설정
 st.set_page_config(page_title="학교 아침축구 리그", layout="wide")
@@ -173,32 +173,27 @@ with tab3:
                 status_icon = "✅" if row['상태'] == '종료됨' else "⏳"
                 expander_title = f"{status_icon} [{row['시간']}] {h_team} vs {a_team}"
                 
-                # 경기를 클릭(터치)하면 열리는 상세 패널
                 with st.expander(expander_title):
                     if row['상태'] == '종료됨':
-                        # 1. 최상단: 양 팀 스코어보드
                         st.markdown(f"""
                         <div style='text-align: center; background-color: #f8f9fa; padding: 15px; border-radius: 10px; margin-bottom: 20px;'>
                             <h2 style='margin: 0;'>{get_color_dot(h_team)} {h_team} <span style='font-size: 1.5em; margin: 0 20px; color: #333;'>{row['홈팀점수']} : {row['원정팀점수']}</span> {a_team} {get_color_dot(a_team)}</h2>
                         </div>
                         """, unsafe_allow_html=True)
                         
-                        # 해당 경기의 득점/도움 기록 분석 (이름 쉼표 단위 분리)
                         scorers_list = [s.strip() for s in str(row['득점요약']).split(',')] if pd.notna(row['득점요약']) and row['득점요약'] not in ['', '기록 없음'] else []
                         assisters_list = [s.strip() for s in str(row['도움요약']).split(',')] if pd.notna(row['도움요약']) and row['도움요약'] not in ['', '기록 없음'] else []
                         
                         goal_counts = Counter(scorers_list)
                         assist_counts = Counter(assisters_list)
                         
-                        # 2. 좌우: 팀별 선수 명단
                         col_left, col_right = st.columns(2)
                         h_players = df_players[df_players['소속팀'] == h_team].sort_values(by=['등번호', '이름'])
                         a_players = df_players[df_players['소속팀'] == a_team].sort_values(by=['등번호', '이름'])
                         
                         with col_left:
                             st.markdown(f"#### 🛡️ {h_team} 출전 명단")
-                            if len(h_players) == 0:
-                                st.caption("등록된 선수가 없습니다.")
+                            if len(h_players) == 0: st.caption("등록된 선수가 없습니다.")
                             for _, p_row in h_players.iterrows():
                                 p_name = p_row['이름']
                                 g_count = goal_counts.get(p_name, 0)
@@ -208,8 +203,7 @@ with tab3:
                                 
                         with col_right:
                             st.markdown(f"#### 🛡️ {a_team} 출전 명단")
-                            if len(a_players) == 0:
-                                st.caption("등록된 선수가 없습니다.")
+                            if len(a_players) == 0: st.caption("등록된 선수가 없습니다.")
                             for _, p_row in a_players.iterrows():
                                 p_name = p_row['이름']
                                 g_count = goal_counts.get(p_name, 0)
@@ -217,7 +211,6 @@ with tab3:
                                 stat_emojis = ("⚽" * g_count) + ("👟" * a_count)
                                 st.write(f"**{p_row['등번호']}** {p_name} {stat_emojis}")
                     else:
-                        # 아직 진행되지 않은 경기
                         st.markdown(f"""
                         <div style='text-align: center; background-color: #f8f9fa; padding: 15px; border-radius: 10px; margin-bottom: 20px;'>
                             <h2 style='margin: 0;'>{get_color_dot(h_team)} {h_team} <span style='font-size: 1.2em; margin: 0 20px; color: #888;'>VS</span> {a_team} {get_color_dot(a_team)}</h2>
@@ -275,12 +268,23 @@ with tab4:
             
             st.write("---")
             st.write("**선수 기록 입력 (선택사항)**")
-            player_names = df_players['이름'].tolist() if len(df_players) > 0 else []
             
-            scorer_1 = st.selectbox("골 넣은 선수 (1)", ["선택 안 함"] + player_names, key="sc1")
-            assister_1 = st.selectbox("도움 준 선수 (1)", ["선택 안 함"] + player_names, key="as1")
-            scorer_2 = st.selectbox("골 넣은 선수 (2)", ["선택 안 함"] + player_names, key="sc2")
-            assister_2 = st.selectbox("도움 준 선수 (2)", ["선택 안 함"] + player_names, key="as2")
+            player_names = df_players['이름'].tolist() if len(df_players) > 0 else []
+            options = ["선택 안 함"] + player_names
+            
+            sc_inputs = []
+            ast_inputs = []
+            
+            # --- 최대 10명 득점/도움 입력 창 (아코디언 형태로 숨겨서 깔끔하게) ---
+            with st.expander("⚽ 득점 및 도움 선수 입력 (최대 10명 기록 가능)", expanded=True):
+                for i in range(1, 11):
+                    c1, c2 = st.columns(2)
+                    with c1:
+                        sc = st.selectbox(f"골 넣은 선수 ({i})", options, key=f"scorer_{i}")
+                        sc_inputs.append(sc)
+                    with c2:
+                        ast = st.selectbox(f"도움 준 선수 ({i})", options, key=f"assist_{i}")
+                        ast_inputs.append(ast)
             
             submit_match_result = st.form_submit_button("경기 결과 및 스탯 최종 반영하기")
             
@@ -310,7 +314,8 @@ with tab4:
                 scorers_recorded = []
                 assists_recorded = []
                 
-                for sc, ast in [(scorer_1, assister_1), (scorer_2, assister_2)]:
+                # 10명의 입력값을 순회하며 데이터 반영
+                for sc, ast in zip(sc_inputs, ast_inputs):
                     if sc != "선택 안 함":
                         p_idx = df_players[df_players['이름'] == sc].index[0]
                         df_players.at[p_idx, '골'] += 1
